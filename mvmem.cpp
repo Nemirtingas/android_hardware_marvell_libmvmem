@@ -38,17 +38,17 @@
 #endif
 
 
-static pthread_mutex_t mvmem_mutex = PTHREAD_MUTEX_INITIALIZER; 
+static int ion_fd = -1;
+static pthread_once_t ion_initialized = PTHREAD_ONCE_INIT;
+
+void ion_init()
+{
+    ion_fd = ion_open();
+}
 
 int ion_open_lock()
 {
-    static int ion_fd = -1;
-    pthread_mutex_lock(&mvmem_mutex);
-
-    ALOGE("%s",__FUNCTION__);
-    if( ion_fd < 0 )
-        ion_fd = ion_open();
-    pthread_mutex_unlock(&mvmem_mutex);
+    pthread_once(&ion_initialized, ion_init);
     return ion_fd;
 }
 
@@ -56,7 +56,7 @@ int mvmem_alloc(size_t len, unsigned int _flags, size_t align)
 {
     int ion_fd = ion_open_lock();
     int heap_mask;
-    int flags;
+    int flags = 0;
     int handle_fd;
 
     ALOGE("%s",__FUNCTION__);
@@ -65,10 +65,9 @@ int mvmem_alloc(size_t len, unsigned int _flags, size_t align)
     else
         heap_mask = ION_HEAP_CARVEOUT_MASK;
 
-    flags = (unsigned short)_flags >> 16;
 
-    if( ((_flags<<14) & 0x80000000) )
-        flags |= 2;
+    if( _flags & 0x20000 )
+        flags |= ION_FLAG_CACHED_NEEDS_SYNC;
 
 
     if( ion_fd < 0 || ion_alloc_fd(ion_fd, len, align, heap_mask, flags, &handle_fd) )
